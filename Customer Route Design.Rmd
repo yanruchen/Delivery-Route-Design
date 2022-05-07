@@ -1,0 +1,105 @@
+---
+title: "Customer Route"
+author: "Yanru"
+date: "5/4/2022"
+output: html_document
+---
+
+```{r, echo=FALSE, message=FALSE}
+pacman::p_load(tidyverse, leaflet, tidygeocoder, sf, ggmap, plotly, googleway)
+```
+
+```{r, echo=FALSE, message=FALSE}
+# df <- read.csv('Customer Address Tracy.csv')
+geocoded <- read.csv('Customer Address Trace with Geocode')
+schedule <- read.csv('Customer Address Tracy - Deliver Schedule.csv')
+```
+
+```{r, echo=FALSE, message=FALSE}
+api <- "paste API key here"
+register_google(key = api)
+```
+
+```{r, echo=FALSE, message=FALSE}
+# create base map, centered at Tracy
+# style see reference: https://developers.google.com/maps/documentation/maps-static/styling#style-syntax
+mymap <- get_googlemap("Tracy", zoom = 8, maptype = "roadmap",
+                       style = c(feature = "landscape.natural.landcover", 
+                                 element = "geometry", visibility = "off")) %>% ggmap()
+
+```
+
+```{r, echo=FALSE, message=FALSE}
+# Get longitute and altitute, write in a csv file
+#geocoded <- df %>% mutate_geocode(Address)
+# write.csv(geocoded, "Customer Address Trace with Geocode")
+```
+
+```{r,echo=FALSE, message=FALSE}
+# Filter schedule table
+# Note: change date in this block only.
+matched_schedule <- schedule %>% filter(Tuesday == "TRUE" & PM == "TRUE")
+#write.csv(matched_schedule, "Tuesday PM Deliver.csv")
+
+# Get longitute and altitute
+matched_schedule <- matched_schedule %>% left_join(geocoded, by = 'Customer')
+```
+
+```{r}
+# Plot customer names and locations
+# Create dataframe for our company
+start <- data.frame ("Name" = c("Produce Company"), 
+                     "Address" = c("100 Valpico Rd, Tracy, CA 95376"), 
+                     "Lon" = c(-121.42829),
+                     "Lat" = c(37.7373))
+
+p <- mymap +
+  geom_point(data = start, aes(x = Lon, y = Lat), color = "red") +
+  geom_text(data = start, aes(x = Lon, y = Lat, label = Name), size = 2, color = "red", fontface = "bold",position=position_jitter(width=0.1,height=0.1)) +
+  geom_point(data = matched_schedule, aes(x = lon, y = lat)) +
+  geom_text(data = matched_schedule, aes(label = Customer), size = 2, color = "deeppink", fontface = "bold",position=position_jitter(width=0.1,height=0.1)) +
+  ggtitle("Location of Customer Deliver") +
+  theme_void() # hide longitute and altitute
+```
+
+
+
+```{r,echo=FALSE, message=FALSE}
+# Get route
+
+origin <- "100 Valpico Rd, Tracy, CA 95376"
+destination <- "100 Valpico Rd, Tracy, CA 95376"
+
+# create a list since waypoints need to be a list
+matched_schedule_list <- vector(mode = "list", length = 0)
+matched_schedule_list <- append(matched_schedule_list, matched_schedule$Address.x)
+# Note: column name change due to join
+
+route<- google_directions(origin = origin, destination = destination,
+                  departure_time = as.POSIXct("2022-05-15 4:00:00"),
+                  waypoints = matched_schedule_list, mode = "driving",
+                  optimise_waypoints = TRUE,
+                  key = api)
+
+# see the structure
+# str(route)
+route$routes$waypoint_order
+
+df_polyline <- decode_pl(route$routes$overview_polyline$points)
+#head(df_polyline)
+```
+
+```{r}
+# Plot route
+g <- p +
+  geom_path(aes(x=lon,y=lat), data=df_polyline, color="blue")
+
+ggplotly(g)
+
+# Save plot as html file
+# htmlwidgets::saveWidget(ggplotly(g, tooltip = c("text")), "index.html")
+```
+
+
+
+
